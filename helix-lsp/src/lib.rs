@@ -567,6 +567,7 @@ pub enum MethodCall {
     RegisterCapability(lsp::RegistrationParams),
     UnregisterCapability(lsp::UnregistrationParams),
     ShowDocument(lsp::ShowDocumentParams),
+    ShowMessageRequest(lsp::ShowMessageRequestParams),
 }
 
 impl MethodCall {
@@ -597,6 +598,10 @@ impl MethodCall {
             lsp::request::ShowDocument::METHOD => {
                 let params: lsp::ShowDocumentParams = params.parse()?;
                 Self::ShowDocument(params)
+            }
+            lsp::request::ShowMessageRequest::METHOD => {
+                let params: lsp::ShowMessageRequestParams = params.parse()?;
+                Self::ShowMessageRequest(params)
             }
             _ => {
                 return Err(Error::Unhandled);

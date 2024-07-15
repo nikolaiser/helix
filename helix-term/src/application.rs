@@ -1,8 +1,8 @@
 use arc_swap::{access::Map, ArcSwap};
 use futures_util::Stream;
-use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Selection};
+use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Rope, Selection};
 use helix_lsp::{
-    lsp::{self, notification::Notification},
+    lsp::{self, notification::Notification, MessageActionItem, MessageType},
     util::lsp_range_to_range,
     LanguageServerId, LspProgressMap,
 };
@@ -22,12 +22,12 @@ use tui::backend::Backend;
 
 use crate::{
     args::Args,
-    compositor::{Compositor, Event},
+    compositor::{AnyComponent, Compositor, Event},
     config::Config,
     handlers,
     job::Jobs,
     keymap::Keymaps,
-    ui::{self, overlay::overlaid},
+    ui::{self, overlay::overlaid, Picker, Popup},
 };
 
 use log::{debug, error, info, warn};
@@ -1026,6 +1026,50 @@ impl Application {
                     }
                     Ok(MethodCall::WorkspaceFolders) => {
                         Ok(json!(&*language_server!().workspace_folders().await))
+                    }
+                    Ok(MethodCall::ShowMessageRequest(params)) => {
+                        if let Some(actions) = params.actions  {
+                            let call_id = id.clone();
+                            let message_type = match params.typ {
+                                MessageType::ERROR => "ERROR",
+                                MessageType::WARNING => "WARNING",
+                                MessageType::INFO => "INFO",
+                                _ => "LOG",
+                            };
+
+                            let message = format!("{}: {}", message_type, &params.message);
+                            let rope = Rope::from(message);
+
+                            let columns = vec![
+                                ui::PickerColumn::new("action", |item: &MessageActionItem, _|{
+                                    item.title.clone().into()
+                                })
+                            ];
+
+                            let picker = Picker::new(columns, 0, actions, (), move |ctx, message_action, _|{
+                                let server_from_id =
+                                        ctx.editor.language_servers.get_by_id(server_id);
+                                let language_server = match server_from_id {
+                                    Some(language_server) => language_server,
+                                    None => {
+                                        warn!(
+                                            "can't find language server with id `{server_id}`"
+                                        );
+                                        return;
+                                    }
+                                };
+                                let response = json!(message_action);
+                                tokio::spawn(
+                                    language_server.reply(call_id.clone(), Ok(response)),
+                                );
+                            });
+
+                            let popup_id = "show-message-request";
+                            let popup = Popup::new(popup_id, picker);
+                            self.compositor.replace_or_push(popup_id, popup);
+                        }
+                        
+                        Ok(serde_json::Value::Null)
                     }
                     Ok(MethodCall::WorkspaceConfiguration(params)) => {
                         let language_server = language_server!();
