@@ -8,6 +8,7 @@
   gitRev ? null,
   grammarOverlays ? [],
   includeGrammarIf ? _: true,
+  includeCogs ? true,
 }: let
   fs = lib.fileset;
 
@@ -71,6 +72,17 @@ in
     # Sets the Helix runtime dir to the grammars
     env.HELIX_DEFAULT_RUNTIME = "${runtimeDir}";
 
+
+    preBuild = lib.optionalString includeCogs ''
+      echo "IN PRE BUILD"
+      export STEEL_HOME=$PWD/steel_home  # code-gen will write files relative to $STEEL_HOME
+      export STEEL_LSP_HOME=$PWD/lsp_home  # required to generate primitives for language server
+      mkdir -p $STEEL_LSP_HOME
+      mkdir -p $STEEL_HOME
+      cargoBuildLog=$(mktemp cargoBuildLogXXXX.json)
+      cargo run --package xtask -- code-gen --message-format json-render-diagnostics >"$cargoBuildLog"
+    '';
+
     # Get all the application stuff in the output directory.
     postInstall = ''
       mkdir -p $out/lib
@@ -79,7 +91,12 @@ in
       cp ${./contrib/Helix.desktop} $out/share/applications/Helix.desktop
       cp ${./logo.svg} $out/share/icons/hicolor/scalable/apps/helix.svg
       cp ${./contrib/helix.png} $out/share/icons/hicolor/256x256/apps/helix.png
+    '' + lib.optionalString includeCogs ''
+      mkdir -p $out/steel/cogs $out/steel/steel-language-server
+      cp -r steel_home/cogs/* "$out/steel/cogs"
+      cp -r lsp_home/* "$out/steel/steel-language-server"
     '';
 
     meta.mainProgram = "hx";
+
   })
